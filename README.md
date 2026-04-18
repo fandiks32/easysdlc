@@ -2,6 +2,62 @@
 
 An MCP (Model Context Protocol) server in Go that bridges Confluence (RFCs) and Bitbucket (Code/PRs) into a unified SDLC workflow. Designed to work alongside an existing Jira MCP.
 
+## Architecture
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                    Claude / MCP Client                    │
+└──────────────┬───────────────────────────┬───────────────┘
+               │   stdio (JSON-RPC)        │
+┌──────────────▼───────────────────────────▼───────────────┐
+│                  sdlc-bridge MCP Server                   │
+│                                                           │
+│  ┌─────────┐  ┌────────────┐  ┌───────────┐             │
+│  │  Tools  │  │  Resources │  │  Prompts  │             │
+│  └────┬────┘  └─────┬──────┘  └───────────┘             │
+│       │              │                                    │
+│  ┌────▼────┐  ┌─────▼──────┐  ┌───────────┐             │
+│  │Bitbucket│  │ Confluence │  │   Shell   │             │
+│  │ Client  │  │   Client   │  │  Runner   │             │
+│  └────┬────┘  └─────┬──────┘  └─────┬─────┘             │
+└───────┼─────────────┼───────────────┼────────────────────┘
+        │             │               │
+   Bitbucket     Confluence      Local git/go
+   Cloud API     Cloud API       commands
+```
+
+## Project Structure
+
+```
+easysdlc/
+├── main.go              # Entry point: env vars, client init, tool/resource/prompt registration
+├── bitbucket/
+│   ├── types.go          # API response structs (PR, Branch, Comment, pagination)
+│   └── client.go         # HTTP client: Bearer auth, PR/branch/comment/diff APIs
+├── confluence/
+│   ├── types.go          # API response structs (Page, Space, Version)
+│   ├── client.go         # HTTP client: Basic auth, page fetch, URL→ID resolution
+│   └── convert.go        # XHTML storage format → Markdown converter
+├── shell/
+│   └── runner.go         # Command execution with timeout and output capture
+├── tools/
+│   ├── errors.go         # Shared error mapping (Bitbucket + Confluence → MCP errors)
+│   ├── fetch_confluence_rfc.go
+│   ├── get_recent_prs.go
+│   ├── read_pr_content.go
+│   ├── review_open_prs.go
+│   ├── run_go_verification.go
+│   ├── setup_bitbucket_branch.go
+│   ├── submit_bitbucket_pr.go
+│   └── submit_pr_review.go
+├── resources/
+│   └── resources.go      # MCP resource templates (PR list, PR detail, Confluence RFC)
+├── instructions/
+│   └── prompts.go        # MCP prompt templates (review, batch review, SDLC workflow)
+├── go.mod
+└── go.sum
+```
+
 ## Prerequisites
 
 - Go 1.23+
@@ -61,8 +117,9 @@ Config file locations:
 
 | Tool | Description | Key Parameters |
 |---|---|---|
-| `get_recent_prs` | List open PRs from last 48h | `workspace`, `repo_slug` |
+| `get_recent_prs` | List open PRs from last N days (default: 3) | `workspace`, `repo_slug`, `days` |
 | `read_pr_content` | Fetch PR metadata + full diff | `workspace`, `repo_slug`, `pr_id` |
+| `review_open_prs` | Fetch all recent open PRs with their diffs in one call, ready for code review | `workspace`, `repo_slug`, `days` |
 | `submit_pr_review` | Post a review comment on a PR | `workspace`, `repo_slug`, `pr_id`, `review_text` |
 
 ### SDLC Workflow
@@ -85,7 +142,8 @@ Config file locations:
 
 | Prompt | Description |
 |---|---|
-| `review_pr` | Guided code review workflow for a PR |
+| `review_pr` | Guided code review workflow for a single PR |
+| `batch_code_review` | Fetch all open PRs from the last 3 days and code review each one |
 | `summarize_recent_prs` | Summary of recent open PRs |
 | `sdlc_workflow` | Full RFC→Branch→Code→Verify→PR workflow |
 
