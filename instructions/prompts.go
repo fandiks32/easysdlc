@@ -149,9 +149,9 @@ After reviewing all PRs, provide a brief summary:
 // SDLCWorkflowPrompt returns a prompt template for the full RFC-to-PR workflow.
 func SDLCWorkflowPrompt() mcp.Prompt {
 	return mcp.NewPrompt("sdlc_workflow",
-		mcp.WithPromptDescription("Full SDLC workflow: fetch an RFC from Confluence, set up a branch, implement, verify, and submit a PR on Bitbucket."),
-		mcp.WithArgument("confluence_page",
-			mcp.ArgumentDescription("Confluence page ID or URL for the RFC"),
+		mcp.WithPromptDescription("Full SDLC workflow: read an RFC via Atlassian MCP, set up a branch, implement, verify, and submit a PR on Bitbucket."),
+		mcp.WithArgument("confluence_url",
+			mcp.ArgumentDescription("Confluence page URL for the RFC (fetched via Atlassian MCP)"),
 			mcp.RequiredArgument(),
 		),
 		mcp.WithArgument("workspace",
@@ -172,7 +172,7 @@ func SDLCWorkflowPrompt() mcp.Prompt {
 // HandleSDLCWorkflowPrompt returns a handler for the SDLC workflow prompt.
 func HandleSDLCWorkflowPrompt() func(ctx context.Context, request mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
 	return func(ctx context.Context, request mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
-		confluencePage := request.Params.Arguments["confluence_page"]
+		confluenceURL := request.Params.Arguments["confluence_url"]
 		workspace := request.Params.Arguments["workspace"]
 		repoSlug := request.Params.Arguments["repo_slug"]
 		branchName := request.Params.Arguments["branch_name"]
@@ -184,7 +184,7 @@ func HandleSDLCWorkflowPrompt() func(ctx context.Context, request mcp.GetPromptR
 					fmt.Sprintf(`Execute the full SDLC workflow for implementing an RFC.
 
 ## Step 1: Understand the Requirements
-Use fetch_confluence_rfc with page_id=%q to fetch the RFC.
+Use the Atlassian MCP to fetch the Confluence RFC at: %s
 Read and summarize the key requirements, acceptance criteria, and technical constraints.
 
 ## Step 2: Set Up the Branch
@@ -202,7 +202,7 @@ Use submit_bitbucket_pr with workspace=%q, repo_slug=%q, source_branch=%q to pus
 Write a clear PR title and description that references the RFC.
 
 Throughout this process, if a Jira MCP is available, create or update relevant Jira tickets to track progress.`,
-						confluencePage,
+						confluenceURL,
 						workspace, repoSlug, branchName,
 						workspace, repoSlug, branchName),
 				)),

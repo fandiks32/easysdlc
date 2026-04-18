@@ -7,7 +7,6 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mekari/easysdlc/bitbucket"
-	"github.com/mekari/easysdlc/confluence"
 )
 
 // PRListResource returns a resource template for listing open PRs in a repository.
@@ -118,38 +117,3 @@ func HandlePRDetailResource(client *bitbucket.Client) func(ctx context.Context, 
 	}
 }
 
-// ConfluenceRFCResource returns a resource template for a Confluence RFC page.
-func ConfluenceRFCResource() mcp.ResourceTemplate {
-	return mcp.NewResourceTemplate(
-		"confluence://pages/{page_id}",
-		"Confluence RFC",
-		mcp.WithTemplateDescription("An RFC or design document from Confluence, converted to Markdown."),
-		mcp.WithTemplateMIMEType("text/markdown"),
-	)
-}
-
-// HandleConfluenceRFCResource returns a handler that fetches a Confluence page as a resource.
-func HandleConfluenceRFCResource(client *confluence.Client) func(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
-	return func(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
-		var pageID string
-		_, err := fmt.Sscanf(request.Params.URI, "confluence://pages/%s", &pageID)
-		if err != nil {
-			return nil, fmt.Errorf("invalid resource URI: %s", request.Params.URI)
-		}
-
-		rfc, err := client.FetchRFC(ctx, pageID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to fetch Confluence page: %w", err)
-		}
-
-		output := fmt.Sprintf("# %s\n\n%s", rfc.Title, rfc.Body)
-
-		return []mcp.ResourceContents{
-			mcp.TextResourceContents{
-				URI:      request.Params.URI,
-				MIMEType: "text/markdown",
-				Text:     output,
-			},
-		}, nil
-	}
-}

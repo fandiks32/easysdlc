@@ -1,29 +1,22 @@
 # sdlc-bridge
 
-An MCP (Model Context Protocol) server in Go that bridges Confluence (RFCs) and Bitbucket (Code/PRs) into a unified SDLC workflow. Designed to work alongside an existing Jira MCP.
+An MCP (Model Context Protocol) server in Go that provides Bitbucket Cloud integration and local Go tooling for SDLC workflows. Designed to work alongside an Atlassian MCP (for Confluence/Jira) and a Jira MCP.
 
 ## Architecture
 
 ```
 ┌──────────────────────────────────────────────────────────┐
 │                    Claude / MCP Client                    │
-└──────────────┬───────────────────────────┬───────────────┘
-               │   stdio (JSON-RPC)        │
-┌──────────────▼───────────────────────────▼───────────────┐
-│                  sdlc-bridge MCP Server                   │
-│                                                           │
-│  ┌─────────┐  ┌────────────┐  ┌───────────┐             │
-│  │  Tools  │  │  Resources │  │  Prompts  │             │
-│  └────┬────┘  └─────┬──────┘  └───────────┘             │
-│       │              │                                    │
-│  ┌────▼────┐  ┌─────▼──────┐  ┌───────────┐             │
-│  │Bitbucket│  │ Confluence │  │   Shell   │             │
-│  │ Client  │  │   Client   │  │  Runner   │             │
-│  └────┬────┘  └─────┬──────┘  └─────┬─────┘             │
-└───────┼─────────────┼───────────────┼────────────────────┘
-        │             │               │
-   Bitbucket     Confluence      Local git/go
-   Cloud API     Cloud API       commands
+└──────┬──────────────────┬──────────────────┬─────────────┘
+       │                  │                  │
+  sdlc-bridge        Atlassian MCP       Jira MCP
+  (this server)      (Confluence)        (tickets)
+       │
+       ├── Bitbucket Cloud API
+       │     PRs, branches, diffs, comments
+       │
+       └── Local shell
+             git, go fmt, go vet, go test
 ```
 
 ## Project Structure
@@ -34,15 +27,10 @@ easysdlc/
 ├── bitbucket/
 │   ├── types.go          # API response structs (PR, Branch, Comment, pagination)
 │   └── client.go         # HTTP client: Bearer auth, PR/branch/comment/diff APIs
-├── confluence/
-│   ├── types.go          # API response structs (Page, Space, Version)
-│   ├── client.go         # HTTP client: Basic auth, page fetch, URL→ID resolution
-│   └── convert.go        # XHTML storage format → Markdown converter
 ├── shell/
 │   └── runner.go         # Command execution with timeout and output capture
 ├── tools/
-│   ├── errors.go         # Shared error mapping (Bitbucket + Confluence → MCP errors)
-│   ├── fetch_confluence_rfc.go
+│   ├── errors.go         # Shared error mapping (Bitbucket → MCP errors)
 │   ├── get_recent_prs.go
 │   ├── read_pr_content.go
 │   ├── review_open_prs.go
@@ -51,7 +39,7 @@ easysdlc/
 │   ├── submit_bitbucket_pr.go
 │   └── submit_pr_review.go
 ├── resources/
-│   └── resources.go      # MCP resource templates (PR list, PR detail, Confluence RFC)
+│   └── resources.go      # MCP resource templates (PR list, PR detail)
 ├── instructions/
 │   └── prompts.go        # MCP prompt templates (review, batch review, SDLC workflow)
 ├── go.mod
@@ -62,7 +50,6 @@ easysdlc/
 
 - Go 1.23+
 - A Bitbucket Cloud **Repository Access Token** with `pullrequest` and `repository` scopes
-- (Optional) Confluence Cloud **API Token** with page read access
 
 ## Build
 
@@ -75,11 +62,6 @@ go build -o easysdlc .
 | Variable | Required | Description |
 |---|---|---|
 | `BITBUCKET_TOKEN` | yes | Bitbucket repository access token (Bearer) |
-| `CONFLUENCE_BASE_URL` | no | Confluence base URL (e.g. `https://mycompany.atlassian.net/wiki`) |
-| `CONFLUENCE_EMAIL` | no | Email for Confluence Basic auth |
-| `CONFLUENCE_TOKEN` | no | Confluence API token |
-
-Confluence tools are only registered when all three `CONFLUENCE_*` variables are set.
 
 ## Claude Desktop Integration
 
@@ -91,10 +73,7 @@ Add to your `claude_desktop_config.json`:
     "sdlc-bridge": {
       "command": "/absolute/path/to/easysdlc",
       "env": {
-        "BITBUCKET_TOKEN": "your-bb-token",
-        "CONFLUENCE_BASE_URL": "https://mycompany.atlassian.net/wiki",
-        "CONFLUENCE_EMAIL": "you@company.com",
-        "CONFLUENCE_TOKEN": "your-confluence-token"
+        "BITBUCKET_TOKEN": "your-bb-token"
       }
     }
   }
@@ -106,12 +85,6 @@ Config file locations:
 - **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
 
 ## Tools
-
-### Confluence
-
-| Tool | Description | Key Parameters |
-|---|---|---|
-| `fetch_confluence_rfc` | Fetch an RFC page, convert XHTML to Markdown | `page_id` (numeric ID or full URL) |
 
 ### Bitbucket — PR Review
 
@@ -136,7 +109,6 @@ Config file locations:
 |---|---|
 | `bitbucket://{workspace}/{repo_slug}/pull-requests` | Open PRs (JSON) |
 | `bitbucket://{workspace}/{repo_slug}/pull-requests/{pr_id}` | PR detail + diff (Markdown) |
-| `confluence://pages/{page_id}` | Confluence RFC (Markdown) |
 
 ## Prompts
 
@@ -145,12 +117,12 @@ Config file locations:
 | `review_pr` | Guided code review workflow for a single PR |
 | `batch_code_review` | Fetch all open PRs from the last 3 days and code review each one |
 | `summarize_recent_prs` | Summary of recent open PRs |
-| `sdlc_workflow` | Full RFC→Branch→Code→Verify→PR workflow |
+| `sdlc_workflow` | Full RFC→Branch→Code→Verify→PR workflow (uses Atlassian MCP for Confluence) |
 
 ## Intended Workflow
 
 ```
-1. fetch_confluence_rfc  →  Understand the RFC requirements
+1. (Atlassian MCP)       →  Fetch RFC from Confluence
 2. (Jira MCP)            →  Create/update tickets
 3. setup_bitbucket_branch →  Create branch & check out locally
 4. (Code locally)        →  Implement the feature
@@ -162,8 +134,7 @@ Config file locations:
 
 | Error | Cause |
 |-------|-------|
-| `Authentication failed` (Bitbucket) | Token is invalid, expired, or lacks required scopes |
-| `Confluence auth failed` | Check CONFLUENCE_EMAIL and CONFLUENCE_TOKEN |
-| `Resource not found` | Incorrect workspace, repo_slug, pr_id, or page_id |
+| `Authentication failed` | Token is invalid, expired, or lacks required scopes |
+| `Resource not found` | Incorrect workspace, repo_slug, or pr_id |
 | `Request timed out` | API did not respond within 30 seconds |
 | `Source branch does not exist` | The `from_branch` for branch creation doesn't exist |

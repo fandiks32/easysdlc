@@ -4,14 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**sdlc-bridge** — an MCP server in Go that bridges Confluence (RFCs) and Bitbucket (Code/PRs) into a unified SDLC workflow. Uses the `mark3labs/mcp-go` SDK over stdio JSON-RPC transport. Designed to work alongside an existing Jira MCP.
+**sdlc-bridge** — an MCP server in Go that provides Bitbucket Cloud integration and local Go tooling for SDLC workflows. Uses the `mark3labs/mcp-go` SDK over stdio JSON-RPC transport. Designed to work alongside an Atlassian MCP (for Confluence) and a Jira MCP.
 
 ## Build & Run
 
 ```bash
 go build -o easysdlc .
-BITBUCKET_TOKEN=xxx ./easysdlc                               # Bitbucket only
-BITBUCKET_TOKEN=xxx CONFLUENCE_BASE_URL=... CONFLUENCE_EMAIL=... CONFLUENCE_TOKEN=... ./easysdlc  # full mode
+BITBUCKET_TOKEN=xxx ./easysdlc
 ```
 
 ## Architecture
@@ -20,29 +19,25 @@ BITBUCKET_TOKEN=xxx CONFLUENCE_BASE_URL=... CONFLUENCE_EMAIL=... CONFLUENCE_TOKE
 main.go              → Entry point: env var validation, client construction, capability registration
 bitbucket/
   types.go           → Bitbucket API response structs (PR, Branch, Comment, pagination)
-  client.go          → HTTP client: Bearer auth, typed errors, PR/branch/comment APIs
-confluence/
-  types.go           → Confluence API response structs (Page, Space, Version)
-  client.go          → HTTP client: Basic auth (email:token), page fetching, URL/ID resolution
-  convert.go         → XHTML storage format → Markdown converter (recursive HTML tree walker)
+  client.go          → HTTP client: Bearer auth, typed errors, PR/branch/comment/diff APIs
 shell/
   runner.go          → Local command execution with timeout, stdout/stderr capture, sequential runner
 tools/
-  errors.go          → Shared error mapping for both Bitbucket and Confluence → MCP error results
-  get_recent_prs.go  → Lists open PRs from last 48h
+  errors.go          → Shared error mapping: Bitbucket errors → MCP error results
+  get_recent_prs.go  → Lists open PRs from last N days (default 3)
   read_pr_content.go → Fetches PR metadata + full diff
+  review_open_prs.go → Fetches all recent PRs with diffs in one call for batch review
   submit_pr_review.go→ Posts a review comment on a PR
-  fetch_confluence_rfc.go   → Fetches RFC from Confluence, converts XHTML→Markdown
   setup_bitbucket_branch.go → Creates branch on BB + local git fetch/checkout via shell
   run_go_verification.go    → Runs go fmt, go vet, go test ./... sequentially
   submit_bitbucket_pr.go    → Git push + creates PR via Bitbucket API
 resources/
-  resources.go       → MCP resource templates (PR list, PR detail, Confluence RFC)
+  resources.go       → MCP resource templates (PR list, PR detail)
 instructions/
-  prompts.go         → MCP prompt templates (review_pr, summarize_recent_prs, sdlc_workflow)
+  prompts.go         → MCP prompt templates (review_pr, batch_code_review, summarize_recent_prs, sdlc_workflow)
 ```
 
-**Key design**: `bitbucket/` and `confluence/` are pure HTTP clients with no MCP awareness. `shell/` is a generic command runner. `tools/` bridges MCP to these packages. `main.go` is wiring only. Confluence integration is optional — tools/resources are only registered when env vars are set.
+**Key design**: `bitbucket/` is a pure HTTP client with no MCP awareness. `shell/` is a generic command runner. `tools/` bridges MCP to these packages. `main.go` is wiring only. Confluence is handled by a separate Atlassian MCP, not this server.
 
 ## MCP SDK Patterns
 
@@ -50,12 +45,6 @@ instructions/
 - **Resources**: `mcp.NewResourceTemplate()` with URI templates; handlers return `([]mcp.ResourceContents, error)`
 - **Prompts**: `mcp.NewPrompt()` with `mcp.WithArgument()`; handlers return `(*mcp.GetPromptResult, error)`
 - stdout is reserved for JSON-RPC, all logging must go to stderr
-
-## API Auth Details
-
-- **Bitbucket**: Bearer token via `Authorization: Bearer <BITBUCKET_TOKEN>` header
-- **Confluence**: Basic auth via `Authorization: Basic base64(CONFLUENCE_EMAIL:CONFLUENCE_TOKEN)` header
-- Base URLs: Bitbucket=`https://api.bitbucket.org/2.0`, Confluence=`CONFLUENCE_BASE_URL/rest/api/content`
 
 ## Shell Execution
 
