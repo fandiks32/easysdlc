@@ -149,9 +149,13 @@ After reviewing all PRs, provide a brief summary:
 // SDLCWorkflowPrompt returns a prompt template for the full RFC-to-PR workflow.
 func SDLCWorkflowPrompt() mcp.Prompt {
 	return mcp.NewPrompt("sdlc_workflow",
-		mcp.WithPromptDescription("Full SDLC workflow: read an RFC via Atlassian MCP, set up a branch, implement, verify, and submit a PR on Bitbucket."),
+		mcp.WithPromptDescription("Full SDLC workflow: read an RFC via Atlassian MCP, break down tasks in Jira, set up a branch, implement, verify, and submit a PR on Bitbucket."),
 		mcp.WithArgument("confluence_url",
 			mcp.ArgumentDescription("Confluence page URL for the RFC (fetched via Atlassian MCP)"),
+			mcp.RequiredArgument(),
+		),
+		mcp.WithArgument("jira_ticket",
+			mcp.ArgumentDescription("Jira ticket key to post the task breakdown to (e.g. PROJ-123)"),
 			mcp.RequiredArgument(),
 		),
 		mcp.WithArgument("workspace",
@@ -173,6 +177,7 @@ func SDLCWorkflowPrompt() mcp.Prompt {
 func HandleSDLCWorkflowPrompt() func(ctx context.Context, request mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
 	return func(ctx context.Context, request mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
 		confluenceURL := request.Params.Arguments["confluence_url"]
+		jiraTicket := request.Params.Arguments["jira_ticket"]
 		workspace := request.Params.Arguments["workspace"]
 		repoSlug := request.Params.Arguments["repo_slug"]
 		branchName := request.Params.Arguments["branch_name"]
@@ -183,28 +188,44 @@ func HandleSDLCWorkflowPrompt() func(ctx context.Context, request mcp.GetPromptR
 				mcp.NewPromptMessage(mcp.RoleUser, mcp.NewTextContent(
 					fmt.Sprintf(`Execute the full SDLC workflow for implementing an RFC.
 
+IMPORTANT: Execute each step independently with fresh context. Do not carry assumptions between steps — re-read the relevant data at the start of each step.
+
 ## Step 1: Understand the Requirements
-Use the Atlassian MCP to fetch the Confluence RFC at: %s
-Read and summarize the key requirements, acceptance criteria, and technical constraints.
+- Confluence RFC URL: %s
+- Use the Atlassian MCP to fetch the RFC page at the URL above.
+- Read and summarize the key requirements, acceptance criteria, and technical constraints.
 
-## Step 2: Set Up the Branch
-Use setup_bitbucket_branch with workspace=%q, repo_slug=%q, branch_name=%q to create and check out the feature branch.
+## Step 2: Post Task Breakdown to Jira
+- Jira ticket: %s
+- Re-read the RFC summary from Step 1.
+- Break down the work into concrete subtasks.
+- Use the Jira MCP to create subtasks under ticket %s with issue type "Task". Each subtask should be clear, actionable, and estimable.
 
-## Step 3: Implement
-Write the code to fulfill the RFC requirements. Follow the existing code patterns and conventions in the repository.
+## Step 3: Set Up the Branch
+- Workspace: %q, Repo: %q, Branch: %q
+- Use setup_bitbucket_branch with the parameters above to create and check out the feature branch.
+- Verify you are on the correct branch before proceeding.
 
-## Step 4: Verify
-Use run_go_verification to run go fmt, go vet, and go test.
-If any checks fail, fix the issues and re-run until all pass.
+## Step 4: Implement
+- Re-read the RFC requirements and the Jira subtasks from Step 2.
+- Write the code to fulfill the requirements. Follow the existing code patterns and conventions in the repository.
+- Add comments to Jira ticket %s via the Jira MCP to log progress as you work through each subtask.
 
-## Step 5: Submit
-Use submit_bitbucket_pr with workspace=%q, repo_slug=%q, source_branch=%q to push and create the pull request.
-Write a clear PR title and description that references the RFC.
+## Step 5: Verify
+- Run run_go_verification to execute go fmt, go vet, and go test.
+- If any checks fail, read the error output, fix the issues, and re-run until all pass.
+- Do not proceed to Step 6 until all checks are green.
 
-Throughout this process, if a Jira MCP is available, create or update relevant Jira tickets to track progress.`,
+## Step 6: Submit
+- Workspace: %q, Repo: %q, Source branch: %q
+- Use submit_bitbucket_pr with the parameters above to push and create the pull request.
+- Write a clear PR title and description that references the RFC (%s) and Jira ticket %s.`,
 						confluenceURL,
+						jiraTicket, jiraTicket,
 						workspace, repoSlug, branchName,
-						workspace, repoSlug, branchName),
+						jiraTicket,
+						workspace, repoSlug, branchName,
+						confluenceURL, jiraTicket),
 				)),
 			},
 		), nil
