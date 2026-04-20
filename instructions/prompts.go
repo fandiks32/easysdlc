@@ -251,6 +251,9 @@ func FullCopilotPrompt() mcp.Prompt {
 		mcp.WithArgument("jira_epic",
 			mcp.ArgumentDescription("Jira epic or parent ticket key to create subtasks under (e.g. PROJ-100). Optional — omit for standalone tickets."),
 		),
+		mcp.WithArgument("jira_ticket",
+			mcp.ArgumentDescription("Existing Jira ticket key (e.g. PROJ-456). If provided, skips analysis and Jira creation — reads ticket and goes straight to implement."),
+		),
 	)
 }
 
@@ -260,12 +263,13 @@ func HandleFullCopilotPrompt() func(ctx context.Context, request mcp.GetPromptRe
 		args := request.Params.Arguments
 
 		replacements := map[string]string{
-			"{{task_title}}":  args["task_title"],
-			"{{requirement}}": args["requirement"],
-			"{{workspace}}":   args["workspace"],
-			"{{repo_slug}}":   args["repo_slug"],
-			"{{project_key}}": args["project_key"],
-			"{{jira_epic}}":   args["jira_epic"],
+			"{{task_title}}":   args["task_title"],
+			"{{requirement}}":  args["requirement"],
+			"{{workspace}}":    args["workspace"],
+			"{{repo_slug}}":    args["repo_slug"],
+			"{{project_key}}":  args["project_key"],
+			"{{jira_epic}}":    args["jira_epic"],
+			"{{jira_ticket}}":  args["jira_ticket"],
 		}
 
 		prompt := fullCopilotTemplate
