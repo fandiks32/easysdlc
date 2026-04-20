@@ -45,6 +45,7 @@ func main() {
 	s.AddPrompt(instructions.SummarizeRecentPRsPrompt(), instructions.HandleSummarizeRecentPRsPrompt())
 	s.AddPrompt(instructions.BatchCodeReviewPrompt(), instructions.HandleBatchCodeReviewPrompt())
 	s.AddPrompt(instructions.SDLCWorkflowPrompt(), instructions.HandleSDLCWorkflowPrompt())
+	s.AddPrompt(instructions.FullCopilotPrompt(), instructions.HandleFullCopilotPrompt())
 
 	if err := server.ServeStdio(s); err != nil {
 		fmt.Fprintf(os.Stderr, "Server error: %v\n", err)

@@ -41,7 +41,9 @@ easysdlc/
 ├── resources/
 │   └── resources.go      # MCP resource templates (PR list, PR detail)
 ├── instructions/
-│   └── prompts.go        # MCP prompt templates (review, batch review, SDLC workflow)
+│   ├── prompts.go        # MCP prompt definitions and handlers
+│   ├── sdlc_workflow.md  # SDLC workflow prompt template (embedded at build)
+│   └── full_copilot.md   # Full copilot prompt template (embedded at build)
 ├── go.mod
 └── go.sum
 ```
@@ -117,18 +119,40 @@ Config file locations:
 | `review_pr` | Guided code review workflow for a single PR |
 | `batch_code_review` | Fetch all open PRs from the last 3 days and code review each one |
 | `summarize_recent_prs` | Summary of recent open PRs |
-| `sdlc_workflow` | Full RFC→Branch→Code→Verify→PR workflow (uses Atlassian MCP for Confluence) |
+| `sdlc_workflow` | Full RFC→Analysis→Breakdown→Human Review→Jira Dedup→Branch→Code→Verify→PR workflow |
+| `full_copilot` | Autonomous copilot: vague requirement→codebase analysis→breakdown→Jira→implement→PR |
 
-## Intended Workflow
+### sdlc_workflow
+
+Phased pipeline for implementing a Confluence RFC with full traceability:
 
 ```
-1. (Atlassian MCP)       →  Fetch RFC from Confluence
-2. (Jira MCP)            →  Create/update tickets
-3. setup_bitbucket_branch →  Create branch & check out locally
-4. (Code locally)        →  Implement the feature
-5. run_go_verification   →  Verify quality (fix & re-run until green)
-6. submit_bitbucket_pr   →  Push & open the PR
+Phase 1:  Fetch RFC + comments, scan repo          → Structured analysis
+Phase 2:  Comprehensive task breakdown              → Atomic tasks with tests
+  GATE:   Human review (mandatory stop)
+Phase 2b: Jira dedup + issue creation               → Idempotent ticket creation
+Phase 3:  Branch from v_next + implement per task
+Phase 4:  go fmt / go vet / go test
+Phase 5:  PR targeting v_next
 ```
+
+Parameters: `confluence_url`, `jira_epic`, `jira_ticket`, `workspace`, `repo_slug`, `branch_name`, `project_key` (optional)
+
+### full_copilot
+
+Autonomous workflow starting from a task title and unclear requirement — no RFC needed:
+
+```
+Phase 1:  Analyze codebase + understand requirement → Structured analysis with assumptions
+Phase 2:  Comprehensive task breakdown              → Atomic tasks with tests
+  GATE:   Human review (mandatory stop)
+Phase 3:  Create Jira tickets (dedup) + self-assign
+Phase 4:  Branch from v_next + implement per task
+Phase 5:  go fmt / go vet / go test
+Phase 6:  PR titled [FULL_COPILOT]: #TICKET #Title + Jira comments
+```
+
+Parameters: `task_title`, `requirement`, `workspace`, `repo_slug`, `project_key`, `jira_epic` (optional)
 
 ## Troubleshooting
 

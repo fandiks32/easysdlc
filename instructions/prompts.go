@@ -2,10 +2,18 @@ package instructions
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
+	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
 )
+
+//go:embed sdlc_workflow.md
+var sdlcWorkflowTemplate string
+
+//go:embed full_copilot.md
+var fullCopilotTemplate string
 
 // ReviewPRPrompt returns a prompt template for reviewing a pull request.
 func ReviewPRPrompt() mcp.Prompt {
@@ -149,13 +157,17 @@ After reviewing all PRs, provide a brief summary:
 // SDLCWorkflowPrompt returns a prompt template for the full RFC-to-PR workflow.
 func SDLCWorkflowPrompt() mcp.Prompt {
 	return mcp.NewPrompt("sdlc_workflow",
-		mcp.WithPromptDescription("Full SDLC workflow: read an RFC via Atlassian MCP, break down tasks in Jira, set up a branch, implement, verify, and submit a PR on Bitbucket."),
+		mcp.WithPromptDescription("Full SDLC workflow: analyze RFC, scan repo, plan tasks with human review gate, deduplicate and publish to Jira, set up branch from v_next, implement, verify, and submit PR."),
 		mcp.WithArgument("confluence_url",
 			mcp.ArgumentDescription("Confluence page URL for the RFC (fetched via Atlassian MCP)"),
 			mcp.RequiredArgument(),
 		),
+		mcp.WithArgument("jira_epic",
+			mcp.ArgumentDescription("Jira epic or parent ticket key to create subtasks under (e.g. PROJ-100)"),
+			mcp.RequiredArgument(),
+		),
 		mcp.WithArgument("jira_ticket",
-			mcp.ArgumentDescription("Jira ticket key to post the task breakdown to (e.g. PROJ-123)"),
+			mcp.ArgumentDescription("Jira ticket key for this specific work item (e.g. PROJ-123)"),
 			mcp.RequiredArgument(),
 		),
 		mcp.WithArgument("workspace",
@@ -167,8 +179,11 @@ func SDLCWorkflowPrompt() mcp.Prompt {
 			mcp.RequiredArgument(),
 		),
 		mcp.WithArgument("branch_name",
-			mcp.ArgumentDescription("Feature branch name to create"),
+			mcp.ArgumentDescription("Feature branch name to create (will be branched from v_next)"),
 			mcp.RequiredArgument(),
+		),
+		mcp.WithArgument("project_key",
+			mcp.ArgumentDescription("Jira project key for dedup queries (e.g. PROJ). If omitted, derived from jira_epic prefix."),
 		),
 	)
 }
@@ -176,57 +191,92 @@ func SDLCWorkflowPrompt() mcp.Prompt {
 // HandleSDLCWorkflowPrompt returns a handler for the SDLC workflow prompt.
 func HandleSDLCWorkflowPrompt() func(ctx context.Context, request mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
 	return func(ctx context.Context, request mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
-		confluenceURL := request.Params.Arguments["confluence_url"]
-		jiraTicket := request.Params.Arguments["jira_ticket"]
-		workspace := request.Params.Arguments["workspace"]
-		repoSlug := request.Params.Arguments["repo_slug"]
-		branchName := request.Params.Arguments["branch_name"]
+		args := request.Params.Arguments
+
+		projectKey := args["project_key"]
+		if projectKey == "" {
+			if idx := strings.Index(args["jira_epic"], "-"); idx > 0 {
+				projectKey = args["jira_epic"][:idx]
+			}
+		}
+
+		replacements := map[string]string{
+			"{{confluence_url}}": args["confluence_url"],
+			"{{jira_epic}}":     args["jira_epic"],
+			"{{jira_ticket}}":   args["jira_ticket"],
+			"{{workspace}}":     args["workspace"],
+			"{{repo_slug}}":     args["repo_slug"],
+			"{{branch_name}}":   args["branch_name"],
+			"{{project_key}}":   projectKey,
+		}
+
+		prompt := sdlcWorkflowTemplate
+		for placeholder, value := range replacements {
+			prompt = strings.ReplaceAll(prompt, placeholder, value)
+		}
 
 		return mcp.NewGetPromptResult(
 			"Full SDLC workflow from RFC to Pull Request",
 			[]mcp.PromptMessage{
-				mcp.NewPromptMessage(mcp.RoleUser, mcp.NewTextContent(
-					fmt.Sprintf(`Execute the full SDLC workflow for implementing an RFC.
+				mcp.NewPromptMessage(mcp.RoleUser, mcp.NewTextContent(prompt)),
+			},
+		), nil
+	}
+}
 
-IMPORTANT: Execute each step independently with fresh context. Do not carry assumptions between steps — re-read the relevant data at the start of each step.
+// FullCopilotPrompt returns a prompt template for the autonomous full-copilot workflow.
+func FullCopilotPrompt() mcp.Prompt {
+	return mcp.NewPrompt("full_copilot",
+		mcp.WithPromptDescription("Autonomous copilot: takes a task title and unclear requirement, analyzes codebase, plans tasks with human review gate, creates Jira tickets, implements, and delivers a PR titled [FULL_COPILOT]."),
+		mcp.WithArgument("task_title",
+			mcp.ArgumentDescription("Short title for the task (e.g. 'Add user validation endpoint')"),
+			mcp.RequiredArgument(),
+		),
+		mcp.WithArgument("requirement",
+			mcp.ArgumentDescription("The requirement description — can be vague or incomplete"),
+			mcp.RequiredArgument(),
+		),
+		mcp.WithArgument("workspace",
+			mcp.ArgumentDescription("Bitbucket workspace slug"),
+			mcp.RequiredArgument(),
+		),
+		mcp.WithArgument("repo_slug",
+			mcp.ArgumentDescription("Repository slug"),
+			mcp.RequiredArgument(),
+		),
+		mcp.WithArgument("project_key",
+			mcp.ArgumentDescription("Jira project key for ticket creation and dedup (e.g. PROJ)"),
+			mcp.RequiredArgument(),
+		),
+		mcp.WithArgument("jira_epic",
+			mcp.ArgumentDescription("Jira epic or parent ticket key to create subtasks under (e.g. PROJ-100). Optional — omit for standalone tickets."),
+		),
+	)
+}
 
-## Step 1: Understand the Requirements
-- Confluence RFC URL: %s
-- Use the Atlassian MCP to fetch the RFC page at the URL above.
-- Read and summarize the key requirements, acceptance criteria, and technical constraints.
+// HandleFullCopilotPrompt returns a handler for the full-copilot workflow prompt.
+func HandleFullCopilotPrompt() func(ctx context.Context, request mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
+	return func(ctx context.Context, request mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
+		args := request.Params.Arguments
 
-## Step 2: Post Task Breakdown to Jira
-- Jira ticket: %s
-- Re-read the RFC summary from Step 1.
-- Break down the work into concrete subtasks.
-- Use the Jira MCP to create subtasks under ticket %s with issue type "Task". Each subtask should be clear, actionable, and estimable.
+		replacements := map[string]string{
+			"{{task_title}}":  args["task_title"],
+			"{{requirement}}": args["requirement"],
+			"{{workspace}}":   args["workspace"],
+			"{{repo_slug}}":   args["repo_slug"],
+			"{{project_key}}": args["project_key"],
+			"{{jira_epic}}":   args["jira_epic"],
+		}
 
-## Step 3: Set Up the Branch
-- Workspace: %q, Repo: %q, Branch: %q
-- Use setup_bitbucket_branch with the parameters above to create and check out the feature branch.
-- Verify you are on the correct branch before proceeding.
+		prompt := fullCopilotTemplate
+		for placeholder, value := range replacements {
+			prompt = strings.ReplaceAll(prompt, placeholder, value)
+		}
 
-## Step 4: Implement
-- Re-read the RFC requirements and the Jira subtasks from Step 2.
-- Write the code to fulfill the requirements. Follow the existing code patterns and conventions in the repository.
-- Add comments to Jira ticket %s via the Jira MCP to log progress as you work through each subtask.
-
-## Step 5: Verify
-- Run run_go_verification to execute go fmt, go vet, and go test.
-- If any checks fail, read the error output, fix the issues, and re-run until all pass.
-- Do not proceed to Step 6 until all checks are green.
-
-## Step 6: Submit
-- Workspace: %q, Repo: %q, Source branch: %q
-- Use submit_bitbucket_pr with the parameters above to push and create the pull request.
-- Write a clear PR title and description that references the RFC (%s) and Jira ticket %s.`,
-						confluenceURL,
-						jiraTicket, jiraTicket,
-						workspace, repoSlug, branchName,
-						jiraTicket,
-						workspace, repoSlug, branchName,
-						confluenceURL, jiraTicket),
-				)),
+		return mcp.NewGetPromptResult(
+			"Full Copilot: autonomous task-to-PR workflow",
+			[]mcp.PromptMessage{
+				mcp.NewPromptMessage(mcp.RoleUser, mcp.NewTextContent(prompt)),
 			},
 		), nil
 	}
