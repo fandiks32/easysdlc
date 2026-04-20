@@ -40,6 +40,8 @@ easysdlc/
 │   └── submit_pr_review.go
 ├── resources/
 │   └── resources.go      # MCP resource templates (PR list, PR detail)
+├── webhook/
+│   └── client.go         # Google Chat webhook HTTP client
 ├── instructions/
 │   ├── prompts.go        # MCP prompt definitions and handlers
 │   ├── sdlc_workflow.md  # SDLC workflow prompt template (embedded at build)
@@ -64,6 +66,7 @@ go build -o easysdlc .
 | Variable | Required | Description |
 |---|---|---|
 | `BITBUCKET_TOKEN` | yes | Bitbucket repository access token (Bearer) |
+| `GOOGLE_CHAT_WEBHOOK_URL` | no | Google Chat incoming webhook URL for review notifications |
 
 ## Claude Desktop Integration
 
@@ -104,6 +107,12 @@ Config file locations:
 | `setup_bitbucket_branch` | Create branch on Bitbucket + local git checkout | `workspace`, `repo_slug`, `branch_name` |
 | `run_go_verification` | Run `go fmt`, `go vet`, `go test ./...` | `work_dir`, `test_args` |
 | `submit_bitbucket_pr` | Git push + create PR via API | `workspace`, `repo_slug`, `title`, `description`, `source_branch` |
+
+### Notifications
+
+| Tool | Description | Key Parameters |
+|---|---|---|
+| `send_google_chat_notification` | Post code review request to Google Chat webhook | `pr_url`, `jira_tickets`, `title`, `overview` |
 
 ## Resources
 
@@ -150,6 +159,7 @@ Phase 3:  Create Jira tickets (dedup) + self-assign
 Phase 4:  Branch from v_next + implement per task
 Phase 5:  go fmt / go vet / go test
 Phase 6:  PR titled [FULL_COPILOT]: #TICKET #Title + Jira comments
+Phase 7:  Google Chat notification → review request to all engineers
 ```
 
 Parameters: `task_title`, `requirement`, `workspace`, `repo_slug`, `project_key`, `jira_epic` (optional)

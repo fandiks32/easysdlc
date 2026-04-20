@@ -186,3 +186,15 @@ After the PR is created, post a comment on each Jira ticket created in Phase 3:
 - Brief summary of what was implemented
 - Status: "Implementation complete, PR submitted for review"
 - Use the Jira MCP to post comments.
+
+## Phase 7: Notify Team via Google Chat
+
+After PR is submitted and Jira comments are posted, notify the team.
+
+Use the send_google_chat_notification tool with:
+- **pr_url**: the PR URL from Phase 6
+- **jira_tickets**: comma-separated list of all Jira ticket keys created in Phase 3
+- **title**: the PR title (e.g. `[FULL_COPILOT]: #PROJ-456 #Add user validation endpoint`)
+- **overview**: a 2-3 sentence high-level summary of what changed and why, written for engineers who have no context on this task
+
+This sends a review request to all engineers in the Google Chat space. The notification includes the PR link, Jira tickets, and overview so reviewers can quickly decide if the PR is relevant to them.

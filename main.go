@@ -9,6 +9,7 @@ import (
 	"github.com/mekari/easysdlc/instructions"
 	"github.com/mekari/easysdlc/resources"
 	"github.com/mekari/easysdlc/tools"
+	"github.com/mekari/easysdlc/webhook"
 )
 
 func main() {
@@ -35,6 +36,14 @@ func main() {
 	s.AddTool(tools.SetupBitbucketBranchTool(), tools.HandleSetupBitbucketBranch(bbClient))
 	s.AddTool(tools.RunGoVerificationTool(), tools.HandleRunGoVerification())
 	s.AddTool(tools.SubmitBitbucketPRTool(), tools.HandleSubmitBitbucketPR(bbClient))
+
+	// --- Tools: Notifications ---
+	if gchatURL := os.Getenv("GOOGLE_CHAT_WEBHOOK_URL"); gchatURL != "" {
+		gchatClient := webhook.NewClient(gchatURL)
+		s.AddTool(tools.SendGoogleChatNotificationTool(), tools.HandleSendGoogleChatNotification(gchatClient))
+	} else {
+		fmt.Fprintln(os.Stderr, "Warning: GOOGLE_CHAT_WEBHOOK_URL not set. Google Chat notifications disabled.")
+	}
 
 	// --- Resources ---
 	s.AddResourceTemplate(resources.PRListResource(), resources.HandlePRListResource(bbClient))
