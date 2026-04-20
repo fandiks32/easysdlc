@@ -2,6 +2,38 @@
 
 An MCP (Model Context Protocol) server in Go that provides Bitbucket Cloud integration and local Go tooling for SDLC workflows. Designed to work alongside an Atlassian MCP (for Confluence/Jira) and a Jira MCP.
 
+## Background
+
+### The Problem
+
+Software development at scale involves repetitive, error-prone coordination across multiple systems: reading specs in Confluence, breaking work into Jira tickets, creating branches, implementing, running quality checks, opening PRs, and notifying reviewers. Each handoff is a context switch that slows engineers down and introduces mistakes — tickets created without acceptance criteria, PRs opened against the wrong branch, reviews requested without context.
+
+AI coding assistants (Copilot, Claude, Cursor) help write code but don't solve the **orchestration problem**. An engineer still manually navigates between Confluence, Jira, Bitbucket, and their IDE. The "last mile" of SDLC automation — connecting these systems into a coherent workflow — remains unsolved.
+
+### The Proposed Solution
+
+**sdlc-bridge** is an MCP server that gives AI assistants (Claude, etc.) the ability to orchestrate the full SDLC pipeline as tool calls:
+
+1. **Read specs** from Confluence via Atlassian MCP
+2. **Analyze the codebase** to ground requirements in real code (affected files, existing patterns)
+3. **Break work into atomic tasks** with acceptance criteria, test cases, and dependency ordering
+4. **Human review gate** — the engineer validates the plan before any external action
+5. **Create Jira tickets** with deduplication (idempotent, safe to re-run)
+6. **Branch, implement, verify** — automated quality gates (go fmt, vet, test)
+7. **Open PR** with structured description and traceability links
+8. **Notify the team** via Google Chat for code review
+
+The key insight: **AI handles orchestration, humans handle judgment.** The mandatory review gate ensures engineers stay in control of what gets created, while the AI eliminates the tedious coordination work between systems.
+
+### Why MCP?
+
+MCP (Model Context Protocol) is an open standard that lets AI assistants call external tools over stdio/JSON-RPC. By implementing sdlc-bridge as an MCP server:
+
+- **Any MCP-compatible client** (Claude Desktop, Claude Code, Cursor, etc.) can use it
+- **Composable** — works alongside other MCP servers (Atlassian, Jira, filesystem) without coupling
+- **Stateless** — the server provides tools, the AI orchestrates state across calls
+- **Two workflow modes**: `sdlc_workflow` (from RFC) and `full_copilot` (from vague requirement or existing Jira ticket)
+
 ## Architecture
 
 ```
@@ -149,8 +181,9 @@ Parameters: `confluence_url`, `jira_epic`, `jira_ticket`, `workspace`, `repo_slu
 
 ### full_copilot
 
-Autonomous workflow starting from a task title and unclear requirement — no RFC needed:
+Autonomous workflow starting from a task title and unclear requirement — no RFC needed. Supports two modes:
 
+**Full flow** (no existing Jira ticket):
 ```
 Phase 1:  Analyze codebase + understand requirement → Structured analysis with assumptions
 Phase 2:  Comprehensive task breakdown              → Atomic tasks with tests
@@ -162,7 +195,18 @@ Phase 6:  PR titled [FULL_COPILOT]: #TICKET #Title + Jira comments
 Phase 7:  Google Chat notification → review request to all engineers
 ```
 
-Parameters: `task_title`, `requirement`, `workspace`, `repo_slug`, `project_key`, `jira_epic` (optional)
+**Shortcut mode** (existing Jira ticket provided):
+```
+Step A:  Read Jira ticket for requirements
+Step B:  Scan repository for context
+Step C:  Task breakdown + human review gate
+Step D:  Branch from v_next + implement
+Step E:  go fmt / go vet / go test
+Step F:  PR titled [FULL_COPILOT]: #TICKET #Title + Jira comment
+Step G:  Google Chat notification
+```
+
+Parameters: `task_title`, `requirement`, `workspace`, `repo_slug`, `project_key`, `jira_epic` (optional), `jira_ticket` (optional — triggers shortcut mode)
 
 ## Troubleshooting
 
