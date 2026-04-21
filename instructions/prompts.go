@@ -102,16 +102,20 @@ Steps:
 	}
 }
 
-// BatchCodeReviewPrompt returns a prompt for reviewing all recent open PRs.
+// BatchCodeReviewPrompt returns a prompt for reviewing multiple PRs by ID.
 func BatchCodeReviewPrompt() mcp.Prompt {
 	return mcp.NewPrompt("batch_code_review",
-		mcp.WithPromptDescription("Fetch all open PRs from the last 3 days and perform a code review on each one, posting review comments."),
+		mcp.WithPromptDescription("Review multiple Bitbucket PRs in parallel by their IDs. Dispatches a subagent per PR to fetch, review, and post comments."),
 		mcp.WithArgument("workspace",
 			mcp.ArgumentDescription("Bitbucket workspace slug"),
 			mcp.RequiredArgument(),
 		),
 		mcp.WithArgument("repo_slug",
 			mcp.ArgumentDescription("Repository slug"),
+			mcp.RequiredArgument(),
+		),
+		mcp.WithArgument("pr_ids",
+			mcp.ArgumentDescription("Comma-separated PR IDs to review (e.g. 1,2,3)"),
 			mcp.RequiredArgument(),
 		),
 	)
@@ -122,32 +126,36 @@ func HandleBatchCodeReviewPrompt() func(ctx context.Context, request mcp.GetProm
 	return func(ctx context.Context, request mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
 		workspace := request.Params.Arguments["workspace"]
 		repoSlug := request.Params.Arguments["repo_slug"]
+		prIDs := request.Params.Arguments["pr_ids"]
 
 		return mcp.NewGetPromptResult(
-			"Batch code review of recent open pull requests",
+			"Batch code review of specified pull requests",
 			[]mcp.PromptMessage{
 				mcp.NewPromptMessage(mcp.RoleUser, mcp.NewTextContent(
-					fmt.Sprintf(`Review all recent open pull requests for the repository %s/%s.
+					fmt.Sprintf(`Review the following pull requests for the repository %s/%s.
 
-## Step 1: Fetch All PRs
-Use the review_open_prs tool with workspace=%q, repo_slug=%q, days=3 to fetch all open PRs from the last 3 days along with their diffs.
+PR IDs to review: %s
 
-## Step 2: Review Each PR
-For each PR, provide a structured code review:
-- **Summary**: What the PR does in 1-2 sentences.
-- **Strengths**: What was done well.
-- **Issues**: Bugs, logic errors, security concerns, or style violations (cite specific files and lines from the diff).
-- **Suggestions**: Improvements for readability, performance, or maintainability.
-- **Verdict**: APPROVE, REQUEST_CHANGES, or COMMENT.
+## Step 1: Dispatch Subagents (in parallel)
 
-## Step 3: Post Reviews
-For each PR, use the submit_pr_review tool with workspace=%q, repo_slug=%q to post the review as a comment.
+For EACH PR ID in the list above, dispatch a separate subagent to handle review independently and in parallel. Each subagent must:
 
-## Step 4: Summary
-After reviewing all PRs, provide a brief summary:
+1. Fetch the PR using read_pr_content with workspace=%q, repo_slug=%q, pr_id=<the PR ID>
+2. Analyze the changes and produce a structured review:
+   - **Summary**: What the PR does in 1-2 sentences.
+   - **Strengths**: What was done well.
+   - **Issues**: Bugs, logic errors, security concerns, or style violations (cite specific files and lines from the diff).
+   - **Suggestions**: Improvements for readability, performance, or maintainability.
+   - **Verdict**: APPROVE, REQUEST_CHANGES, or COMMENT.
+3. Post the review using submit_pr_review with workspace=%q, repo_slug=%q, pr_id=<the PR ID>, review_text=<the structured review>
+4. Report back: PR ID, verdict, and key findings.
+
+## Step 2: Cross-Cutting Summary
+
+After ALL subagents have completed, synthesize a summary:
 - Total PRs reviewed
 - How many approved vs. need changes
-- Any cross-cutting concerns seen across multiple PRs`, workspace, repoSlug, workspace, repoSlug, workspace, repoSlug),
+- Any cross-cutting concerns or patterns seen across multiple PRs (e.g. repeated issues, shared anti-patterns, missing test coverage in the same area)`, workspace, repoSlug, prIDs, workspace, repoSlug, workspace, repoSlug),
 				)),
 			},
 		), nil

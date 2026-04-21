@@ -133,8 +133,15 @@ After all issues are created/reused, present a summary:
 
 Total: created N, reused M.
 
+## Phase 2c: User Confirmation Before Implementation
+- Ask user to continue implementation pahse or stop to review the created Jira issues.
+- If user wants to review the created Jira issues, present the list of created/reused issues with their keys and summaries, and ask for confirmation to proceed with implementation.
+- If user confirms, proceed to Phase 3. If user wants to stop, end the workflow here.
+
 ## Phase 3: Implement per ticket implementation must follow the task breakdown and be done one task/PR at a time.
 - Workspace: "{{workspace}}", Repo: "{{repo_slug}}", Branch: "{{branch_name}}", Source: "v_next"
+- per ticket must be implemented in the order of the task breakdown (T01, then T02, etc.) respecting dependencies.
+- per ticket must be implemented in a separate branch named "{{branch_name}}-#{jira-ticket-number}" for each task T.
 - Use setup_bitbucket_branch with the parameters above and from_branch="v_next" to create and check out the feature branch.
 - The branch MUST be created from v_next, not from main.
 - Verify you are on the correct branch before proceeding.
@@ -142,12 +149,50 @@ Total: created N, reused M.
 - Work through tasks in dependency order (T01, T02, ...).
 - Write the code to fulfill each task's acceptance criteria. Follow the existing code patterns and conventions in the repository.
 - Add comments to Jira ticket {{jira_ticket}} via the Jira MCP to log progress as you complete each task.
+- must be implemented sequentially per jira ticket
 
 
 ## Phase 4: Verify
 - Run run_go_verification to execute go fmt, go vet, and go test.
 - If any checks fail, read the error output, fix the issues, and re-run until all pass.
 - Do not proceed to Phase 5 until all checks are green.
+
+## Phase 4b: Requirements Compliance Check
+
+Before submitting the PR, verify the implementation actually fulfills the original requirements.
+
+### 4b-1. Re-read Requirements
+- Fetch the RFC again from Confluence: {{confluence_url}}
+- Also fetch the Jira ticket {{jira_ticket}} for any updated acceptance criteria or comments.
+- Re-read the task breakdown from Phase 2 (acceptance criteria and test cases for each task).
+
+### 4b-2. Review Implementation Diff
+- Run `git diff v_next...HEAD` to see all changes on the feature branch.
+- Catalog what was actually implemented: new files, modified functions, added endpoints, changed behavior.
+
+### 4b-3. Compare Against Requirements
+For each Functional Requirement (FR-1, FR-2, ...) from Phase 1 analysis:
+- Check if the diff contains code that fulfills the requirement.
+- Check if the acceptance criteria have corresponding test coverage.
+- Mark each requirement: ✅ COVERED | ⚠️ PARTIAL | ❌ MISSING
+
+### 4b-4. Produce Compliance Report
+
+Present this report:
+
+| Requirement | Status | Evidence |
+|-------------|--------|----------|
+| FR-1: ...   | ✅ COVERED | file.go:func — implements X |
+| FR-2: ...   | ❌ MISSING | No code addresses Y |
+
+**Out-of-scope additions**: List any code that was added but does NOT map to any FR or NFR (potential scope creep).
+
+### 4b-5. Gate Decision
+- If ALL requirements are ✅ COVERED → proceed to Phase 5.
+- If ANY requirement is ❌ MISSING → STOP. Go back to Phase 3, implement the missing requirement, re-run Phase 4 and 4b.
+- If ANY requirement is ⚠️ PARTIAL → STOP. Explain what's missing, fix it, re-run Phase 4 and 4b.
+
+Do NOT proceed to Phase 5 with missing or partial requirements.
 
 ## Phase 5: Submit
 - Workspace: "{{workspace}}", Repo: "{{repo_slug}}", Source branch: "{{branch_name}}", Target: "v_next"
@@ -164,4 +209,12 @@ Definition of Done:
 
 [ ] Specs / Tests are adequate ? ⭐️
 [ ] Changes conform with code quality tools ? ⭐️
+```
+
+## Phase 6: Post-Submission
+- After submitting the PR, per ticket, post a report as comment in jira ticket {{jira_ticket}} with the PR URL and a summary of the implementation.
+- Example comment:
+```
+✅ T01 implemented and PR submitted: {{pr_url}}
+Summary: Implemented the new endpoint to create widgets. Added validation for input parameters. Updated the widget service to handle the new business logic. All acceptance criteria met and tests added.
 ```

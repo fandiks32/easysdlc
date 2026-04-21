@@ -170,6 +170,40 @@ Implementation must follow the task breakdown and be done one task at a time.
 - If any checks fail, read the error output, fix the issues, and re-run until all pass.
 - Do not proceed to Phase 6 until all checks are green.
 
+## Phase 5b: Requirements Compliance Check
+
+Before submitting the PR, verify the implementation fulfills the original requirement.
+
+### 5b-1. Re-read Requirements
+- Use Jira MCP to re-read all tickets created in Phase 3 (acceptance criteria, test cases).
+- Re-read the structured analysis from Phase 1 (FR-1, FR-2, ...).
+
+### 5b-2. Review Implementation Diff
+- Run `git diff v_next...HEAD` to see all changes on the feature branch.
+- Catalog what was actually implemented.
+
+### 5b-3. Compare Against Requirements
+For each Functional Requirement (FR-1, FR-2, ...):
+- Check if the diff contains code that fulfills the requirement.
+- Check if acceptance criteria have corresponding test coverage.
+- Mark each: ✅ COVERED | ⚠️ PARTIAL | ❌ MISSING
+
+### 5b-4. Produce Compliance Report
+
+| Requirement | Status | Evidence |
+|-------------|--------|----------|
+| FR-1: ...   | ✅ COVERED | file.go:func — implements X |
+| FR-2: ...   | ❌ MISSING | No code addresses Y |
+
+**Out-of-scope additions**: List code not mapped to any FR/NFR.
+
+### 5b-5. Gate Decision
+- ALL ✅ COVERED → proceed to Phase 6.
+- ANY ❌ MISSING → STOP. Implement missing requirement, re-run Phase 5 and 5b.
+- ANY ⚠️ PARTIAL → STOP. Fix, re-run Phase 5 and 5b.
+
+Do NOT proceed to Phase 6 with missing or partial requirements.
+
 ## Phase 6: Submit PR + Comment in Jira
 
 ### Submit PR
@@ -241,6 +275,15 @@ Use this mode when `{{jira_ticket}}` is provided. Skip analysis, task breakdown,
 ## Step E: Verify
 - Run run_go_verification to execute go fmt, go vet, and go test.
 - Fix and re-run until all checks are green.
+
+## Step E.5: Requirements Compliance Check
+- Re-read Jira ticket {{jira_ticket}} via Jira MCP (acceptance criteria, description, comments).
+- Run `git diff v_next...HEAD` to review all implemented changes.
+- For each acceptance criterion in the Jira ticket and each task in the breakdown from Step C:
+  - Mark: ✅ COVERED | ⚠️ PARTIAL | ❌ MISSING
+- Present compliance table.
+- If ANY ❌ MISSING or ⚠️ PARTIAL → STOP. Fix, re-run Step E and E.5.
+- Only proceed to Step F when ALL requirements are ✅ COVERED.
 
 ## Step F: Submit PR + Comment in Jira
 - Use submit_bitbucket_pr with target_branch="v_next".
